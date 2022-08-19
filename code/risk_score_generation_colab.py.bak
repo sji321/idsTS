@@ -1,0 +1,96 @@
+def risk_score_generation_colab(fileter_df,filtered_scaled_data, current_data, day_info, w_2_dir,btrap_rep):
+
+	spearman_cor = pd.DataFrame()
+    df_scaled = c.deepcopy(filtered_scaled_data)
+    # feature variance score
+    col_len = filtered_scaled_data.shape[1]
+    #----- data is MLE the, the column size is 41 --------------------------------
+    # _scale_var = df_scaled.iloc[:, 0:37].var(axis=1)
+    # actual_scaled_df = pd.concat([_scale_var, df_scaled.iloc[:, 37:col_len]], axis=1)
+
+     #----- data is DWT_PE the, the column size is 89 --------------------------------
+    _scale_var = df_scaled.iloc[:, 0:85].var(axis=1)
+    actual_scaled_df = pd.concat([_scale_var, df_scaled.iloc[:, 85:col_len]], axis=1) 
+    actual_scaled_df.columns = ['var', 'c_ses', 'Normal', 'KA', 'UA']
+
+    copy_df = c.deepcopy(fileter_df)
+    scale_score = c.deepcopy(actual_scaled_df)
+    col_list = ['KA', 'UA']
+    scale_score['AttackSum'] = copy_df[col_list].sum(axis=1)
+
+
+    scale_score['ratio_N'] = scale_score['Normal'] + scale_score['var']
+    scale_score['ratio_A'] = (scale_score['UA'] + scale_score['KA']) + scale_score['var']
+
+    idx_n = scale_score.columns.get_loc("ratio_N")
+    idx_a = scale_score.columns.get_loc("ratio_A")
+    idx_s = fileter_df.columns.get_loc("c_ses")
+    #     def risk_score(data):
+    scale_score['risk'] = (scale_score['ratio_A'] / (scale_score['ratio_N'] + scale_score['ratio_A'])) * fileter_df[
+        'c_ses']
+
+
+    print('Completed risk score--', str(day_info))
+
+    # spearman correlation between risk score and other varuables
+    s = spearman_cor_test(scale_score)
+
+    spearman_cor = spearman_cor.append(s, ignore_index=True)
+    #     # create a folder for month
+
+    print('Completed spearman --', str(day_info))
+
+    ### write to outfile
+
+    # os.chdir(current_folder) #change the month directory
+    # print('Completed current folder --',current_folder)
+    m_folder = (current_data.split('2015')[1][0:2])
+
+
+    # # create a folder for month
+    # if not os.path.exists(month_folder):
+      
+    #   os.makedirs(month_folder)
+    # # join the month folder to existed directory       
+    # write_dir = os.path.join(current_folder, month_folder)   
+    # os.chdir(write_dir) #change the month directory
+    # print('Completed write --',write_dir)
+
+    
+       
+    file_name = file_name_create(day_info, '_riskscore')
+    cor_file_name = file_name_create(m_folder, 'Spearman_2_rs')
+
+
+    print('Writing an output --', str(day_info))
+
+    
+    scale_score.to_csv(file_name, index=False)
+
+    # if str(day_info).split('2015')[1][3:4] =='1':  ----------------->MLE
+    if str(current_data).split('2015')[1][3:4] =='1':
+      spearman_cor.columns = ['KA', 'N', 'Ses', 'var', 'p_KA', 'p_N', 'p_Ses', 'p_var']
+	  spearman_cor['day']=pd.Series(day)
+      spearman_cor.to_csv(w_2_dir + '/' + cor_file_name, index=True)
+    else:
+	  spearman_cor['day']=pd.Series(day)	
+      spearman_cor.to_csv(w_2_dir + '/' + cor_file_name, index=True, mode='a')
+
+   # spearman_cor.to_csv(w_2_dir + '/' + cor_file_name, index=True, mode='a')
+    # scale_score.to_csv(write_dir + '/' + file_name, index=False)
+    # spearman_cor.to_csv(write_dir + '/' + cor_file_name, index=False, mode='a')
+
+    print('Calcualting risk score for --', str(day_info))
+    target = scale_score['risk']
+    target_ecdf_values, y = ecdf_values(target)
+
+    print('Identifying peak change for --', str(day_info))
+    change_values, change_idx = peak_change_V2(target_ecdf_values, str(day_info), save=False)
+    #     idx_CI = bootstrap(change_idx_values, bootstrap_rep, func=np.mean)
+    print('done for peak --', str(day_info))
+    bootstrap_out_idx = bootstrap_out(change_values, change_idx, str(day_info), btrap_rep)
+    print('done for bootstrap --', str(day_info))
+
+    level_out, risk_cut_off = risk_level_2(bootstrap_out_idx, scale_score, w_2_dir, day_info)
+
+    return level_out,risk_cut_off
